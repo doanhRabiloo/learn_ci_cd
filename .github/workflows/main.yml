@@ -5,26 +5,81 @@ on:
     branches: [master]
 
 jobs:
-  say-hi:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Cin Chao
-        run: echo "Xin chao..."
-  laravel-test:
+  build-app:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: shivammathur/setup-php@v2
         with:
           php-version: 8.3
-
+      
       - name: Install dependencies
-        run: composer install
+        run: composer install --no-progress --prefer-dist
 
       - name: Prepare env
         run: |
           cp .env.example .env
           php artisan key:generate
+          chmod 777 .env
+
+      - name: Debug ls
+        run: |
+          pwd
+          ls -la
+
+      - name: Debug check .env
+        run: cat .env
+
+      - name: Tar .env
+        run: tar -czvf env.tar.gz .env
+
+      - name: Upload env
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build
+          path: |
+            vendor
+            env.tar.gz
+          if-no-files-found: error
+
+  phpcs-check:
+    needs: build-app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download build
+        uses: actions/download-artifact@v4
+        with:
+          name: app-build
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.3
+      
+      - name: Fix permissions for phpcs
+        run: chmod +x vendor/bin/phpcs
+
+      - name: Run phpcs
+        run: vendor/bin/phpcs --standard=PSR12 app/
+  
+  laravel-test:
+    needs: build-app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download vendor
+        uses: actions/download-artifact@v4
+        with:
+          name: app-build
+
+      - name: Extract env
+        run: tar -xzvf env.tar.gz
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.3
 
       - name: Run test
-        run: php artisan test 
+        run: php artisan test
